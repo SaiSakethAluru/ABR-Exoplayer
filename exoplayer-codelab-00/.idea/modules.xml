@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/exoplayer-codelab-00.app.iml" filepath="$PROJECT_DIR$/.idea/modules/app/exoplayer-codelab-00.app.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/player-lib/exoplayer-codelab-00.player-lib.iml" filepath="$PROJECT_DIR$/.idea/modules/player-lib/exoplayer-codelab-00.player-lib.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/exoplayer-intro.exoplayer-codelab-00.iml" filepath="$PROJECT_DIR$/.idea/modules/exoplayer-intro.exoplayer-codelab-00.iml" />
+    </modules>
+  </component>
+</project>
