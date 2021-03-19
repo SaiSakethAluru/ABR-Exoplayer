@@ -16,6 +16,8 @@
 package com.example.exoplayer;
 
 import android.content.Context;
+import android.widget.TextView;
+import android.widget.TextView;
 
 import androidx.annotation.Nullable;
 
@@ -34,11 +36,17 @@ import com.google.android.exoplayer2.util.Clock;
 import com.google.android.exoplayer2.util.Util;
 
 import org.checkerframework.checker.nullness.compatqual.NullableType;
+import org.w3c.dom.Text;
 
+import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collector;
+
+import static java.lang.Math.abs;
+import static java.lang.Math.max;
 
 /**
  * A bandwidth based adaptive {@link TrackSelection}, whose selected track is updated to be the one
@@ -53,14 +61,33 @@ public class BolaTrackSelection extends BaseTrackSelection {
     public static final float DEFAULT_BUFFERED_FRACTION_TO_LIVE_EDGE_FOR_QUALITY_INCREASE = 0.75f;
     public static final long DEFAULT_MIN_TIME_BETWEEN_BUFFER_REEVALUTATION_MS = 2000;
 
+
 //    private static final Integer[] VIDEO_BIT_RATE = new Integer[]{300, 750, 1200, 1850, 2850, 4300};
     private Double[] VIDEO_BIT_RATE;
     private Double[] UTILITIES;
     private String video_name;
+    private final TextView infoText;
+    private final String initialText;
+    private long previousSelectTimeMs;
+    private long previousBufferedDuration;
+    private int previousBitrate;
+    private final int qoeType = QOE_LINEAR;
+
+    private double totalQoe = 0;
+    private double totalBitrate = 0;
+    private ArrayList<Double> qoe;
+
 //    private static final Double [] UTILITIES = new Double[]{Math.log(300),Math.log(750),Math.log(1200),Math.log(1850),Math.log(2850),Math.log(4300)};
     private static final double MINIMUM_BUFFER_S = 10.0;
     private static final double MINIMUM_BUFFER_PER_BITRATE_LEVEL_S = 2.0;
     private static final double DEFAULT_STABLE_BUFFER_TIME = 12.0;
+    private static final double M_IN_K = 1000.0;
+    private static final double REBUF_PENALTY = 4.3;
+    private static final double SMOOTH_PENALTY = 1.0;
+    public static final int QOE_UNKNOWN = 0;
+    public static final int QOE_LINEAR = 1;
+    public static final int QOE_LOG = 2;
+    public static final int QOE_HD = 3;
     //    private final Context context;
     private final BandwidthProvider bandwidthProvider;
     private final long minDurationForQualityIncreaseUs;
@@ -73,6 +100,10 @@ public class BolaTrackSelection extends BaseTrackSelection {
     private float playbackSpeed;
     private int selectedIndex;
     private long lastBufferEvaluationMs;
+    private OutputStreamWriter outputStreamWriter;
+    private Listener listener;
+    private int chunkProcessedCount;
+
 
     /**
      * @param group          The {@link TrackGroup}.
@@ -80,10 +111,16 @@ public class BolaTrackSelection extends BaseTrackSelection {
      *                       empty. May be in any order.
      * @param bandwidthMeter Provides an estimate of the currently available bandwidth.
      */
-    public BolaTrackSelection(String video_name, TrackGroup group, int[] tracks,
+    public BolaTrackSelection(String video_name, TextView infoText,
+                              OutputStreamWriter outputStreamWriter,
+                              Listener listener,
+                              TrackGroup group, int[] tracks,
                               BandwidthMeter bandwidthMeter) {
         this(
                 video_name,
+                infoText,
+                outputStreamWriter,
+                listener,
                 group,
                 tracks,
                 bandwidthMeter,
@@ -128,6 +165,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
      */
     public BolaTrackSelection(
             String video_name,
+            TextView infoText,
+            OutputStreamWriter outputStreamWriter,
+            Listener listener,
             TrackGroup group,
             int[] tracks,
             BandwidthMeter bandwidthMeter,
@@ -141,6 +181,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
             Clock clock) {
         this(
                 video_name,
+                infoText,
+                outputStreamWriter,
+                listener,
                 group,
                 tracks,
                 new DefaultBandwidthProvider(bandwidthMeter, bandwidthFraction, reservedBandwidth),
@@ -154,6 +197,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
 
     private BolaTrackSelection(
             String video_name,
+            TextView infoText,
+            OutputStreamWriter outputStreamWriter,
+            Listener listener,
             TrackGroup group,
             int[] tracks,
             BandwidthProvider bandwidthProvider,
@@ -165,6 +211,10 @@ public class BolaTrackSelection extends BaseTrackSelection {
             Clock clock) {
         super(group, tracks);
         this.video_name = video_name;
+        this.infoText = infoText;
+        this.outputStreamWriter = outputStreamWriter;
+        this.listener = listener;
+        this.initialText = infoText.getText().toString();
         this.bandwidthProvider = bandwidthProvider;
         this.minDurationForQualityIncreaseUs = minDurationForQualityIncreaseMs * 1000L;
         this.maxDurationForQualityDecreaseUs = maxDurationForQualityDecreaseMs * 1000L;
@@ -181,18 +231,32 @@ public class BolaTrackSelection extends BaseTrackSelection {
                 this.VIDEO_BIT_RATE = new Double[]{300.0, 750.0, 1200.0, 1850.0, 2850.0, 4300.0};
                 break;
             case "tears_of_steel":
-                this.VIDEO_BIT_RATE = new Double[]{686.685,686.685,111.6150,1929.169,2362.822,2470.094};
+                this.VIDEO_BIT_RATE = new Double[]{686.685,686.685,1116.150,1929.169,2362.822,2470.094};
                 break;
             case "redbull_2sec":
                 this.VIDEO_BIT_RATE = new Double[]{300.795,700.051,1179.845,1993.730,2995.671,3992.758};
                 break;
             case "bbb_30fps":
                 this.VIDEO_BIT_RATE = new Double[]{507.246,1013.310,1254.758,1883.700,3134.488,4952.892};
+                break;
+            case "elephants_dream":
+//                this.totalChunks = 653;
+                this.VIDEO_BIT_RATE = new Double[]{344.976, 808.384, 1273.596, 2186.563, 3127.680, 4516.590};
+                break;
+            case "forest":
+//                this.totalChunks = 454;
+                this.VIDEO_BIT_RATE = new Double[]{279.652, 836.887, 1282.108, 1779.588, 2568.145, 3894.863};
+                break;
         }
         this.UTILITIES = new Double[this.VIDEO_BIT_RATE.length];
         for(int i=0;i<this.VIDEO_BIT_RATE.length;i++){
             this.UTILITIES[i] = Math.log(this.VIDEO_BIT_RATE[i]);
         }
+        this.previousBufferedDuration = 0;
+        this.previousSelectTimeMs = clock.elapsedRealtime();
+        this.previousBitrate = 0;
+        this.qoe = new ArrayList<>();
+        this.chunkProcessedCount=0;
     }
 
     /**
@@ -343,7 +407,15 @@ public class BolaTrackSelection extends BaseTrackSelection {
             selectedIndex = VIDEO_BIT_RATE.length - 1;
             return;
         }
-        double bufferTime = Math.max(bufferedDurationUs/1000000.0,MINIMUM_BUFFER_S+MINIMUM_BUFFER_PER_BITRATE_LEVEL_S*VIDEO_BIT_RATE.length);
+        if(this.listener.getDataType() != C.DATA_TYPE_MEDIA){
+            return;
+        }
+//        long nowMs = clock.elapsedRealtime();
+//        long delay = nowMs - this.previousSelectTimeMs;
+        long delay = this.listener.getChunkLoadDuration();
+        int currentSelectedIndex = this.length -selectedIndex - 1;
+//        this.previousSelectTimeMs = nowMs;
+        double bufferTime = max(bufferedDurationUs/1000000.0,MINIMUM_BUFFER_S+MINIMUM_BUFFER_PER_BITRATE_LEVEL_S*VIDEO_BIT_RATE.length);
         double bufferLevel = bufferedDurationUs/1000000.0;
         int highestUtilityIndex = 0;
         for(int i=0;i<UTILITIES.length;i++){
@@ -354,22 +426,57 @@ public class BolaTrackSelection extends BaseTrackSelection {
         }
         double gp = (UTILITIES[highestUtilityIndex]-1)/(bufferTime/MINIMUM_BUFFER_S-1);
         double vp = MINIMUM_BUFFER_S/gp;
+        try {
+            this.outputStreamWriter.write("-----Chunk: "+this.chunkProcessedCount+"-----\n");
+            this.outputStreamWriter.write("Buffered duration: "+bufferedDurationUs/1000000.0);
+            this.outputStreamWriter.write(" gp: "+gp+" vp: "+vp+"\nScores: ");
 
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         int quality = -1;
         Double score = Double.NaN;
         for(int i=0;i<VIDEO_BIT_RATE.length;i++){
             double s = (vp*(UTILITIES[i]+gp)-bufferLevel) / VIDEO_BIT_RATE[i];
+            try {
+                this.outputStreamWriter.write(s+" ");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
             if(score.isNaN() || s>=score){
                 quality = i;
                 score = s;
             }
         }
         System.out.println("Selected quality "+quality);
+
         if(selectedIndex != VIDEO_BIT_RATE.length - 1 - quality){
             selectedIndex = VIDEO_BIT_RATE.length-1-quality;
             reason = C.SELECTION_REASON_ADAPTIVE;
         }
+        double rebuf = max(delay - (double)this.previousBufferedDuration/1000, 0.0) / 1000.0;
+        if(this.qoeType == QOE_LINEAR){
+            double reward = (double) VIDEO_BIT_RATE[currentSelectedIndex] / M_IN_K -
+                    REBUF_PENALTY * rebuf -
+                    SMOOTH_PENALTY * abs(VIDEO_BIT_RATE[currentSelectedIndex] - VIDEO_BIT_RATE[previousBitrate])/M_IN_K;
+            System.out.println("reward: "+reward);
+            qoe.add(reward);
+            totalQoe += reward;
+        }
 
+        this.totalBitrate += this.VIDEO_BIT_RATE[quality];
+        String info_text = this.initialText + "\n" + "Qoe: "+totalQoe + "\n" + "Bitrate: "+this.totalBitrate;
+        this.infoText.setText(info_text);
+        this.previousBitrate = currentSelectedIndex;
+        this.previousBufferedDuration = bufferedDurationUs;
+        try {
+            this.outputStreamWriter.write("\n Selected quality: "+quality+" Value: "+VIDEO_BIT_RATE[quality]+"\n");
+            this.outputStreamWriter.write("Total Qoe: "+totalQoe+"\n");
+            this.outputStreamWriter.write("Total Bitrate: "+totalBitrate+"\n");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        this.chunkProcessedCount++;
     }
 
     @Override
@@ -537,6 +644,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
         private final BandwidthMeter bandwidthMeter;
 //        private final Context context;
         private String video_name;
+        private TextView infoText;
+        private  OutputStreamWriter outputStreamWriter;
+        private Listener listener;
         private final int minDurationForQualityIncreaseMs;
         private final int maxDurationForQualityDecreaseMs;
         private final int minDurationToRetainAfterDiscardMs;
@@ -548,9 +658,15 @@ public class BolaTrackSelection extends BaseTrackSelection {
         /**
          * Creates an adaptive track selection factory with default parameters.
          */
-        public Factory(String video_name) {
+        public Factory(String video_name, TextView infoText,
+                       OutputStreamWriter outputStreamWriter,
+                       Listener listener
+        ) {
             this(
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     DEFAULT_MIN_DURATION_FOR_QUALITY_INCREASE_MS,
                     DEFAULT_MAX_DURATION_FOR_QUALITY_DECREASE_MS,
                     DEFAULT_MIN_DURATION_TO_RETAIN_AFTER_DISCARD_MS,
@@ -566,9 +682,15 @@ public class BolaTrackSelection extends BaseTrackSelection {
          */
         @Deprecated
         @SuppressWarnings("deprecation")
-        public Factory(String video_name,BandwidthMeter bandwidthMeter) {
+        public Factory(String video_name, TextView infoText,
+                       OutputStreamWriter outputStreamWriter,
+                       Listener listener,
+                       BandwidthMeter bandwidthMeter) {
             this(
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     bandwidthMeter,
                     DEFAULT_MIN_DURATION_FOR_QUALITY_INCREASE_MS,
                     DEFAULT_MAX_DURATION_FOR_QUALITY_DECREASE_MS,
@@ -596,12 +718,18 @@ public class BolaTrackSelection extends BaseTrackSelection {
          */
         public Factory(
                 String video_name,
+                TextView infoText,
+                OutputStreamWriter outputStreamWriter,
+                Listener listener,
                 int minDurationForQualityIncreaseMs,
                 int maxDurationForQualityDecreaseMs,
                 int minDurationToRetainAfterDiscardMs,
                 float bandwidthFraction) {
             this(
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     minDurationForQualityIncreaseMs,
                     maxDurationForQualityDecreaseMs,
                     minDurationToRetainAfterDiscardMs,
@@ -619,6 +747,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
         @SuppressWarnings("deprecation")
         public Factory(
                 String video_name,
+                TextView infoText,
+                OutputStreamWriter outputStreamWriter,
+                Listener listener,
                 BandwidthMeter bandwidthMeter,
                 int minDurationForQualityIncreaseMs,
                 int maxDurationForQualityDecreaseMs,
@@ -626,6 +757,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
                 float bandwidthFraction) {
             this(
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     bandwidthMeter,
                     minDurationForQualityIncreaseMs,
                     maxDurationForQualityDecreaseMs,
@@ -665,6 +799,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
         @SuppressWarnings("deprecation")
         public Factory(
                 String video_name,
+                TextView infoText,
+                OutputStreamWriter outputStreamWriter,
+                Listener listener,
                 int minDurationForQualityIncreaseMs,
                 int maxDurationForQualityDecreaseMs,
                 int minDurationToRetainAfterDiscardMs,
@@ -674,6 +811,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
                 Clock clock) {
             this(
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     /* bandwidthMeter= */ null,
                     minDurationForQualityIncreaseMs,
                     maxDurationForQualityDecreaseMs,
@@ -692,6 +832,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
         @Deprecated
         public Factory(
                 String video_name,
+                TextView infoText,
+                OutputStreamWriter outputStreamWriter,
+                Listener listener,
                 @Nullable BandwidthMeter bandwidthMeter,
                 int minDurationForQualityIncreaseMs,
                 int maxDurationForQualityDecreaseMs,
@@ -701,6 +844,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
                 long minTimeBetweenBufferReevaluationMs,
                 Clock clock) {
             this.video_name = video_name;
+            this.infoText = infoText;
+            this.outputStreamWriter = outputStreamWriter;
+            this.listener = listener;
             this.bandwidthMeter = bandwidthMeter;
             this.minDurationForQualityIncreaseMs = minDurationForQualityIncreaseMs;
             this.maxDurationForQualityDecreaseMs = maxDurationForQualityDecreaseMs;
@@ -740,6 +886,9 @@ public class BolaTrackSelection extends BaseTrackSelection {
                     BolaTrackSelection adaptiveSelection =
                             createAdaptiveTrackSelection(
                                     this.video_name,
+                                    this.infoText,
+                                    this.outputStreamWriter,
+                                    this.listener,
                                     definition.group,
                                     bandwidthMeter,
                                     definition.tracks,
@@ -780,12 +929,18 @@ public class BolaTrackSelection extends BaseTrackSelection {
          */
         protected BolaTrackSelection createAdaptiveTrackSelection(
                 String video_name,
+                TextView infoText,
+                OutputStreamWriter outputStreamWriter,
+                Listener listener,
                 TrackGroup group,
                 BandwidthMeter bandwidthMeter,
                 int[] tracks,
                 int totalFixedTrackBandwidth) {
             return new BolaTrackSelection(
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     group,
                     tracks,
                     new DefaultBandwidthProvider(bandwidthMeter, bandwidthFraction, totalFixedTrackBandwidth),
@@ -822,7 +977,7 @@ public class BolaTrackSelection extends BaseTrackSelection {
         @Override
         public long getAllocatedBandwidth() {
             long totalBandwidth = (long) (bandwidthMeter.getBitrateEstimate() * bandwidthFraction);
-            long allocatableBandwidth = Math.max(0L, totalBandwidth - reservedBandwidth);
+            long allocatableBandwidth = max(0L, totalBandwidth - reservedBandwidth);
             if (allocationCheckpoints == null) {
                 return allocatableBandwidth;
             }

@@ -1,3 +1,5 @@
+
+
 /*
  * Copyright (C) 2016 The Android Open Source Project
  *
@@ -15,13 +17,19 @@
  */
 package com.example.exoplayer;
 
+import android.app.Activity;
 import android.content.Context;
+import android.icu.util.Output;
+import android.widget.TextView;
 
 import androidx.annotation.Nullable;
 
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.SimpleExoPlayer;
+import com.google.android.exoplayer2.analytics.AnalyticsListener;
+import com.google.android.exoplayer2.source.LoadEventInfo;
+import com.google.android.exoplayer2.source.MediaLoadData;
 import com.google.android.exoplayer2.source.TrackGroup;
 import com.google.android.exoplayer2.source.chunk.MediaChunk;
 import com.google.android.exoplayer2.source.chunk.MediaChunkIterator;
@@ -40,6 +48,7 @@ import org.tensorflow.lite.support.common.FileUtil;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.nio.MappedByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -67,6 +76,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         private final BandwidthMeter bandwidthMeter;
         private final String video_name;
         private final Context context;
+        private final TextView infoText;
+        private final OutputStreamWriter outputStreamWriter;
+        private final Listener listener;
         private final int minDurationForQualityIncreaseMs;
         private final int maxDurationForQualityDecreaseMs;
         private final int minDurationToRetainAfterDiscardMs;
@@ -78,10 +90,14 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         /**
          * Creates an adaptive track selection factory with default parameters.
          */
-        public Factory(Context context, String video_name) {
+        public Factory(Context context, String video_name, TextView infoText, OutputStreamWriter outputStreamWriter,
+                       Listener listener) {
             this(
                     context,
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     DEFAULT_MIN_DURATION_FOR_QUALITY_INCREASE_MS,
                     DEFAULT_MAX_DURATION_FOR_QUALITY_DECREASE_MS,
                     DEFAULT_MIN_DURATION_TO_RETAIN_AFTER_DISCARD_MS,
@@ -97,10 +113,15 @@ public class PensieveTrackSelection extends BaseTrackSelection {
          */
         @Deprecated
         @SuppressWarnings("deprecation")
-        public Factory(Context context, String video_name, BandwidthMeter bandwidthMeter) {
+        public Factory(Context context, String video_name, TextView infoText,
+                       OutputStreamWriter outputStreamWriter,
+                       Listener listener, BandwidthMeter bandwidthMeter) {
             this(
                     context,
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     bandwidthMeter,
                     DEFAULT_MIN_DURATION_FOR_QUALITY_INCREASE_MS,
                     DEFAULT_MAX_DURATION_FOR_QUALITY_DECREASE_MS,
@@ -129,6 +150,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         public Factory(
                 Context context,
                 String video_name,
+                TextView infoText,
+                OutputStreamWriter outputStreamWriter,
+                Listener listener,
                 int minDurationForQualityIncreaseMs,
                 int maxDurationForQualityDecreaseMs,
                 int minDurationToRetainAfterDiscardMs,
@@ -136,6 +160,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
             this(
                     context,
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     minDurationForQualityIncreaseMs,
                     maxDurationForQualityDecreaseMs,
                     minDurationToRetainAfterDiscardMs,
@@ -154,6 +181,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         public Factory(
                 Context context,
                 String video_name,
+                TextView infoText,
+                OutputStreamWriter outputStreamWriter,
+                Listener listener,
                 BandwidthMeter bandwidthMeter,
                 int minDurationForQualityIncreaseMs,
                 int maxDurationForQualityDecreaseMs,
@@ -162,6 +192,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
             this(
                     context,
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     bandwidthMeter,
                     minDurationForQualityIncreaseMs,
                     maxDurationForQualityDecreaseMs,
@@ -202,6 +235,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         public Factory(
                 Context context,
                 String video_name,
+                TextView infoText,
+                OutputStreamWriter outputStreamWriter,
+                Listener listener,
                 int minDurationForQualityIncreaseMs,
                 int maxDurationForQualityDecreaseMs,
                 int minDurationToRetainAfterDiscardMs,
@@ -212,6 +248,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
             this(
                     context,
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     /* bandwidthMeter= */ null,
                     minDurationForQualityIncreaseMs,
                     maxDurationForQualityDecreaseMs,
@@ -231,6 +270,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         public Factory(
                 Context context,
                 String video_name,
+                TextView infoText,
+                OutputStreamWriter outputStreamWriter,
+                Listener listener,
                 @Nullable BandwidthMeter bandwidthMeter,
                 int minDurationForQualityIncreaseMs,
                 int maxDurationForQualityDecreaseMs,
@@ -241,6 +283,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
                 Clock clock) {
             this.context = context;
             this.video_name = video_name;
+            this.infoText = infoText;
+            this.outputStreamWriter = outputStreamWriter;
+            this.listener = listener;
             this.bandwidthMeter = bandwidthMeter;
             this.minDurationForQualityIncreaseMs = minDurationForQualityIncreaseMs;
             this.maxDurationForQualityDecreaseMs = maxDurationForQualityDecreaseMs;
@@ -281,6 +326,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
                             createAdaptiveTrackSelection(
                                     this.context,
                                     this.video_name,
+                                    this.infoText,
+                                    this.outputStreamWriter,
+                                    this.listener,
                                     definition.group,
                                     bandwidthMeter,
                                     definition.tracks,
@@ -313,7 +361,7 @@ public class PensieveTrackSelection extends BaseTrackSelection {
          * Creates a single adaptive selection for the given group, bandwidth meter and tracks.
          *
          *
-         * @param video_name
+         * @param video_name               Name of video
          * @param group                    The {@link TrackGroup}.
          * @param bandwidthMeter           A {@link BandwidthMeter} which can be used to select tracks.
          * @param tracks                   The indices of the selected tracks in the track group.
@@ -324,6 +372,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         protected PensieveTrackSelection createAdaptiveTrackSelection(
                 Context context,
                 String video_name,
+                TextView infoText,
+                OutputStreamWriter outputStreamWriter,
+                Listener listener,
                 TrackGroup group,
                 BandwidthMeter bandwidthMeter,
                 int[] tracks,
@@ -331,6 +382,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
             return new PensieveTrackSelection(
                     context,
                     video_name,
+                    infoText,
+                    outputStreamWriter,
+                    listener,
                     group,
                     tracks,
                     new DefaultBandwidthProvider(bandwidthMeter, bandwidthFraction, totalFixedTrackBandwidth),
@@ -348,7 +402,7 @@ public class PensieveTrackSelection extends BaseTrackSelection {
     public static final int DEFAULT_MIN_DURATION_TO_RETAIN_AFTER_DISCARD_MS = 25000;
     public static final float DEFAULT_BANDWIDTH_FRACTION = 0.7f;
     public static final float DEFAULT_BUFFERED_FRACTION_TO_LIVE_EDGE_FOR_QUALITY_INCREASE = 0.75f;
-    public static final long DEFAULT_MIN_TIME_BETWEEN_BUFFER_REEVALUTATION_MS = 2000;
+    public static final long DEFAULT_MIN_TIME_BETWEEN_BUFFER_REEVALUTATION_MS = 500;
 
     private final Context context;
     private final BandwidthProvider bandwidthProvider;
@@ -370,7 +424,6 @@ public class PensieveTrackSelection extends BaseTrackSelection {
 //    private static final Integer[] VIDEO_BIT_RATE = new Integer[]{300, 750, 1200, 1850, 2850, 4300};
     private static final double BUFFER_NORM_FACTOR = 10.0;
     private static final double M_IN_K = 1000.0;
-    private static final int CHUNK_TIL_VIDEO_END_CAP = 48;
     private static final double REBUF_PENALTY = 4.3;
     private static final double SMOOTH_PENALTY = 1.0;
     // TODO: Should shift to constants file
@@ -378,13 +431,17 @@ public class PensieveTrackSelection extends BaseTrackSelection {
     private static final int QOE_LINEAR = 1;
     private static final int QOE_LOG = 2;
     private static final int QOE_HD = 3;
-    private static final int DEFAULT_BITRATE = 0;
+    private static final int DEFAULT_BITRATE = 1;
 //    private static final int totalChunks = 48;
 
     private Double[] VIDEO_BIT_RATE;
+    private int CHUNK_TIL_VIDEO_END_CAP;
     private final String video_name;
+    private final TextView infoText;
+    private final String initialText;
     private int totalChunks;
 
+    private OutputStreamWriter outputStreamWriter;
     private float[][][] model_input;
     private float[][] model_output;
     private long previousSelectTimeMs;
@@ -393,7 +450,11 @@ public class PensieveTrackSelection extends BaseTrackSelection {
     private int chunksProcessedCount;
     private int qoeType;
     private ArrayList<Double> qoe;
+    private double totalQoe = 0;
+    private double totalBitrate = 0;
     private HashMap<Integer, int[]> chunksizes;
+
+    private Listener listener;
 
     /**
      * @param group          The {@link TrackGroup}.
@@ -401,11 +462,19 @@ public class PensieveTrackSelection extends BaseTrackSelection {
      *                       empty. May be in any order.
      * @param bandwidthMeter Provides an estimate of the currently available bandwidth.
      */
-    public PensieveTrackSelection(Context context, String video_name, TrackGroup group, int[] tracks,
+    public PensieveTrackSelection(Context context,
+                                  String video_name,
+                                  TextView infoText,
+                                  OutputStreamWriter outputStreamWriter,
+                                  Listener listener,
+                                  TrackGroup group, int[] tracks,
                                   BandwidthMeter bandwidthMeter) {
         this(
                 context,
                 video_name,
+                infoText,
+                outputStreamWriter,
+                listener,
                 group,
                 tracks,
                 bandwidthMeter,
@@ -451,6 +520,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
     public PensieveTrackSelection(
             Context context,
             String video_name,
+            TextView infoText,
+            OutputStreamWriter outputStreamWriter,
+            Listener listener,
             TrackGroup group,
             int[] tracks,
             BandwidthMeter bandwidthMeter,
@@ -465,6 +537,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         this(
                 context,
                 video_name,
+                infoText,
+                outputStreamWriter,
+                listener,
                 group,
                 tracks,
                 new DefaultBandwidthProvider(bandwidthMeter, bandwidthFraction, reservedBandwidth),
@@ -479,6 +554,9 @@ public class PensieveTrackSelection extends BaseTrackSelection {
     private PensieveTrackSelection(
             Context context,
             String video_name,
+            TextView infoText,
+            OutputStreamWriter outputStreamWriter,
+            Listener listener,
             TrackGroup group,
             int[] tracks,
             BandwidthProvider bandwidthProvider,
@@ -491,6 +569,8 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         super(group, tracks);
         this.context = context;
         this.video_name = video_name;
+        this.infoText = infoText;
+        this.initialText = infoText.getText().toString();
         this.bandwidthProvider = bandwidthProvider;
         this.minDurationForQualityIncreaseUs = minDurationForQualityIncreaseMs * 1000L;
         this.maxDurationForQualityDecreaseUs = maxDurationForQualityDecreaseMs * 1000L;
@@ -510,29 +590,42 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         this.qoeType = QOE_LINEAR;
         this.qoe = new ArrayList<>();
         this.chunksizes = new HashMap<>();
+        this.previousSelectTimeMs = clock.elapsedRealtime();
+        switch (video_name){
+            case "envivio":
+                this.totalChunks = 48;
+                this.VIDEO_BIT_RATE = new Double[]{300.0, 750.0, 1200.0, 1850.0, 2850.0, 4300.0};
+                break;
+            case "tears_of_steel":
+                this.totalChunks = 244;
+                this.VIDEO_BIT_RATE = new Double[]{686.685,686.685,1116.150,1929.169,2362.822,2470.094};
+                break;
+            case "redbull_2sec":
+                this.totalChunks = 199;
+                this.VIDEO_BIT_RATE = new Double[]{300.795,700.051,1179.845,1993.730,2995.671,3992.758};
+                break;
+            case "bbb_30fps":
+                this.totalChunks = 158;
+                this.VIDEO_BIT_RATE = new Double[]{507.246,1013.310,1254.758,1883.700,3134.488,4952.892};
+                break;
+            case "elephants_dream":
+                this.totalChunks = 652;
+                this.VIDEO_BIT_RATE = new Double[]{344.976, 808.384, 1273.596, 2186.563, 3127.680, 4516.590};
+                break;
+            case "forest":
+                this.totalChunks = 453;
+                this.VIDEO_BIT_RATE = new Double[]{279.652, 836.887, 1282.108, 1779.588, 2568.145, 3894.863};
+                break;
+
+        }
+        this.CHUNK_TIL_VIDEO_END_CAP = this.totalChunks;
         for (int i = 0; i < VIDEO_BIT_RATE.length; i++) {
             int[] chunksizes_ = readChunkSizes(video_name+"/video_size_" + i);
             System.out.println("Constructor, quality " + i + " first chunk " + chunksizes_[0]);
             this.chunksizes.put(i, chunksizes_);
         }
-        this.previousSelectTimeMs = clock.elapsedRealtime();
-        switch (video_name){
-            case "envivio":
-                this.totalChunks = 49;
-                this.VIDEO_BIT_RATE = new Double[]{300.0, 750.0, 1200.0, 1850.0, 2850.0, 4300.0};
-                break;
-            case "tears_of_steel":
-                this.totalChunks = 245;
-                this.VIDEO_BIT_RATE = new Double[]{686.685,686.685,111.6150,1929.169,2362.822,2470.094};
-                break;
-            case "redbull_2sec":
-                this.totalChunks = 200;
-                this.VIDEO_BIT_RATE = new Double[]{300.795,700.051,1179.845,1993.730,2995.671,3992.758};
-                break;
-            case "bbb_30fps":
-                this.totalChunks = 159;
-                this.VIDEO_BIT_RATE = new Double[]{507.246,1013.310,1254.758,1883.700,3134.488,4952.892};
-        }
+        this.outputStreamWriter = outputStreamWriter;
+        this.listener = listener;
     }
 
     /**
@@ -565,17 +658,20 @@ public class PensieveTrackSelection extends BaseTrackSelection {
             MediaChunkIterator[] mediaChunkIterators) {
 
         // Pensieve start
-        long nowMs = clock.elapsedRealtime();
-        long delay = nowMs - this.previousSelectTimeMs;
-        this.previousSelectTimeMs = nowMs;
+//        queue.get(queue.size()-1)
+//        long nowMs = clock.elapsedRealtime();
+//        long delay = nowMs - this.previousSelectTimeMs;
+//        this.previousSelectTimeMs = nowMs;
+//        long delay = this.listener.getChunkLoadEndTime() - this.listener.getChunkLoadStartTime();
+
         // MediaChunkIterators start from (start index - 1) position. Set them to point to the first element.
-        for (MediaChunkIterator mediaChunkIterator : mediaChunkIterators) {
-            mediaChunkIterator.next();
-        }
-        for(int i=0;i<this.length;i++){
-            Format f = getFormat(i);
-            System.out.println("i: "+i+" bitrate: "+f.bitrate);
-        }
+//        for (MediaChunkIterator mediaChunkIterator : mediaChunkIterators) {
+//            mediaChunkIterator.next();
+//        }
+//        for(int i=0;i<this.length;i++){
+//            Format f = getFormat(i);
+//            System.out.println("i: "+i+" bitrate: "+f.bitrate);
+//        }
 //        if(this.totalChunks < 0){
 //            this.totalChunks = evaluateTotalChunks(mediaChunkIterators[0]);
 //            System.out.println("mediaChunkIterator array size = "+mediaChunkIterators.length);
@@ -583,60 +679,94 @@ public class PensieveTrackSelection extends BaseTrackSelection {
 //            System.out.println("hasNext: "+ mediaChunkIterators[0].isEnded());
 //            System.out.println("next check: "+evaluateTotalChunks(mediaChunkIterators[0]));
 //        }
-        try {
-            MappedByteBuffer tfliteModel = FileUtil.loadMappedFile(this.context, "pretrained_model.tflite");
-            Interpreter interpreter = new Interpreter(tfliteModel, new Interpreter.Options());
-            for (int i = 0; i < S_INFO; i++) {
-                System.arraycopy(this.model_input[0][i], 1, this.model_input[0][i], 0, S_LEN - 1);
-            }
-            int currentSelectedIndex = this.length - selectedIndex - 1;
-            System.out.println("Current selection: " + currentSelectedIndex);
-            // TODO: Check initial selection
-            this.model_input[0][0][S_LEN - 1] = (VIDEO_BIT_RATE[currentSelectedIndex]).floatValue() /Collections.max(Arrays.asList(VIDEO_BIT_RATE)).floatValue();
-            this.model_input[0][1][S_LEN - 1] = ((float) bufferedDurationUs / 1000) / (float) BUFFER_NORM_FACTOR;
-            // TODO: Verify this field. Also check for corner cases such as initial selection.
-            // this.model_input[0][2][S_LEN-1] -> video chunk size / delay / M_IN_K? Doubt.
-//            this.model_input[0][2][S_LEN - 1] = (float) mediaChunkIterators[currentSelectedIndex].getDataSpec().length / (float) delay / (float) M_IN_K;
-            this.model_input[0][2][S_LEN - 1] = (float) this.chunksizes.get(currentSelectedIndex)[this.chunksProcessedCount] / (float) delay / (float) M_IN_K;
-
-            this.model_input[0][3][S_LEN - 1] = ((float) delay / (float) M_IN_K) / (float) BUFFER_NORM_FACTOR;
-            // this.model_input[0][4][:A_DIM] -> next_video_chunk_sizes / M_IN_K / M_IN_K; why twice?
-            // TODO: Check for better way to get chunk sizes
-            int[] nextChunkSizes = getNextChunkSizes();
-            for (int i = 0; i < A_DIM; i++) {
-                this.model_input[0][4][S_LEN - A_DIM + i] = (float) nextChunkSizes[i] / (float) M_IN_K / (float) M_IN_K;
-            }
-            this.model_input[0][5][S_LEN - 1] = min(totalChunks - this.chunksProcessedCount, CHUNK_TIL_VIDEO_END_CAP) / (float) CHUNK_TIL_VIDEO_END_CAP;
-            this.chunksProcessedCount++;
-            interpreter.run(this.model_input, this.model_output);
-            int predictedBitrateIndex = 0;
-            for (int i = 0; i < A_DIM; i++) {
-                if (this.model_output[0][i] > this.model_output[0][predictedBitrateIndex]) {
-                    predictedBitrateIndex = i;
+        if(reason == C.SELECTION_REASON_UNKNOWN){
+            reason = C.SELECTION_REASON_INITIAL;
+            selectedIndex = this.length - DEFAULT_BITRATE - 1;
+            System.out.println("Making initial selection: "+selectedIndex);
+        }
+        else if (this.listener.getDataType() != C.DATA_TYPE_MEDIA){
+            return;
+        }
+        else {
+            long delay = this.listener.getChunkLoadDuration();
+            System.out.println("Delay: " + delay);
+            try {
+                MappedByteBuffer tfliteModel = FileUtil.loadMappedFile(this.context, "pretrained_model.tflite");
+                Interpreter interpreter = new Interpreter(tfliteModel, new Interpreter.Options());
+                for (int i = 0; i < S_INFO; i++) {
+                    float zero_id_value = this.model_input[0][i][0];
+                    System.arraycopy(this.model_input[0][i], 1, this.model_input[0][i], 0, S_LEN - 1);
+                    this.model_input[0][i][S_LEN - 1] = zero_id_value;
                 }
-            }
-            if (predictedBitrateIndex != currentSelectedIndex) {
-                selectedIndex = max(this.length - predictedBitrateIndex -1,0);
-                System.out.println("selectedIndex " + selectedIndex);
-                reason = C.SELECTION_REASON_ADAPTIVE;
-            }
-            // TODO: Calculate reward
-            double rebuf = max(delay - (double) this.previousBufferedDuration / 1000, 0.0);
-            System.out.println("Rebuffering time: " + rebuf);
-            if (this.qoeType == QOE_LINEAR) {
-                double reward = (double) VIDEO_BIT_RATE[currentSelectedIndex] / M_IN_K
-                        - REBUF_PENALTY * rebuf - SMOOTH_PENALTY * abs(VIDEO_BIT_RATE[currentSelectedIndex]
-                        - VIDEO_BIT_RATE[previousBitrate]) / M_IN_K;
-                System.out.println("reward: " + reward);
-                qoe.add(reward);
-            }
-            this.previousBitrate = currentSelectedIndex;
-            this.previousBufferedDuration = bufferedDurationUs;
-            interpreter.close();
+                int currentSelectedIndex = this.length - selectedIndex - 1;
+                System.out.println("Current selection: " + currentSelectedIndex);
+                // TODO: Check initial selection
+                this.model_input[0][0][S_LEN - 1] = (VIDEO_BIT_RATE[currentSelectedIndex]).floatValue() / Collections.max(Arrays.asList(VIDEO_BIT_RATE)).floatValue();
+                this.model_input[0][1][S_LEN - 1] = ((float) bufferedDurationUs / 1000000) / (float) BUFFER_NORM_FACTOR;
+                // TODO: Verify this field. Also check for corner cases such as initial selection.
+                // this.model_input[0][2][S_LEN-1] -> video chunk size / delay / M_IN_K? Doubt.
+//            this.model_input[0][2][S_LEN - 1] = (float) mediaChunkIterators[currentSelectedIndex].getDataSpec().length / (float) delay / (float) M_IN_K;
+                this.model_input[0][2][S_LEN - 1] = (float) this.chunksizes.get(currentSelectedIndex)[this.chunksProcessedCount] / (float) delay / (float) M_IN_K;
 
-        } catch (Exception e) {
-            System.out.println("Exception occurred :'( ");
-            e.printStackTrace();
+                this.model_input[0][3][S_LEN - 1] = ((float) delay / (float) M_IN_K) / (float) BUFFER_NORM_FACTOR;
+                // this.model_input[0][4][:A_DIM] -> next_video_chunk_sizes / M_IN_K / M_IN_K; why twice?
+                // TODO: Check for better way to get chunk sizes
+                int[] nextChunkSizes = getNextChunkSizes();
+                for (int i = 0; i < A_DIM; i++) {
+                    this.model_input[0][4][i] = (float) nextChunkSizes[i] / (float) M_IN_K / (float) M_IN_K;
+                }
+                this.model_input[0][5][S_LEN - 1] = min(totalChunks - this.chunksProcessedCount, CHUNK_TIL_VIDEO_END_CAP) / (float) CHUNK_TIL_VIDEO_END_CAP;
+                this.outputStreamWriter.write("-----Chunk number: " + this.chunksProcessedCount + "-----\nState:\n");
+                for (int i = 0; i < S_INFO; i++) {
+                    for (int j = 0; j < S_LEN; j++) {
+                        this.outputStreamWriter.write("" + this.model_input[0][i][j] + "\t");
+                    }
+                    this.outputStreamWriter.write("\n");
+                }
+                this.chunksProcessedCount++;
+                interpreter.run(this.model_input, this.model_output);
+                int predictedBitrateIndex = 0;
+                for (int i = 0; i < A_DIM; i++) {
+                    if (this.model_output[0][i] > this.model_output[0][predictedBitrateIndex]) {
+                        predictedBitrateIndex = i;
+                    }
+                }
+                this.outputStreamWriter.write("Predicted bitrate index: " + predictedBitrateIndex + " value: " + this.VIDEO_BIT_RATE[predictedBitrateIndex] + "\n");
+                if (predictedBitrateIndex != currentSelectedIndex) {
+                    selectedIndex = max(this.length - predictedBitrateIndex - 1, 0);
+                    System.out.println("selectedIndex " + selectedIndex);
+                    reason = C.SELECTION_REASON_ADAPTIVE;
+                }
+                // TODO: Calculate reward
+                double rebuf = max(delay - (double) this.previousBufferedDuration / 1000.0, 0.0) / 1000.0;
+                this.outputStreamWriter.write("Rebuffering time: " + rebuf + "\n");
+                System.out.println("Rebuffering time: " + rebuf);
+                if (this.qoeType == QOE_LINEAR) {
+                    double reward = (double) VIDEO_BIT_RATE[currentSelectedIndex] / M_IN_K
+                            - REBUF_PENALTY * rebuf - SMOOTH_PENALTY * abs(VIDEO_BIT_RATE[currentSelectedIndex]
+                            - VIDEO_BIT_RATE[previousBitrate]) / M_IN_K;
+                    System.out.println("reward: " + reward);
+                    qoe.add(reward);
+                    totalQoe += reward;
+                }
+                this.outputStreamWriter.write("Total QOE: " + totalQoe + "\n");
+                this.totalBitrate += this.VIDEO_BIT_RATE[predictedBitrateIndex];
+                this.outputStreamWriter.write("Total Bitrate: " + this.totalBitrate + "\n");
+                String info_text = this.initialText + "\n" + "Qoe: " + totalQoe + "\n" + "Bitrate: " + this.totalBitrate;
+//            this.infoText.getText().clear();
+//            this.infoText.setText(info_text);
+                this.previousBitrate = currentSelectedIndex;
+                this.previousBufferedDuration = bufferedDurationUs;
+                TextView e = (TextView) ((Activity) this.context).findViewById(R.id.info_text);
+                System.out.println("text in e: " + e.getText());
+                e.setText("");
+                e.setText(info_text);
+                interpreter.close();
+
+            } catch (Exception e) {
+                System.out.println("Exception occurred :'( ");
+                e.printStackTrace();
+            }
         }
         // Pensieve End
 
@@ -1022,7 +1152,7 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         try {
             Scanner scanner = new Scanner(this.context.getAssets().open(filename));
             int i = 0;
-            while (scanner.hasNextInt()) {
+            while (i < totalChunks && scanner.hasNextInt()) {
                 sizes[i++] = scanner.nextInt();
             }
         } catch (FileNotFoundException e) {
@@ -1034,4 +1164,6 @@ public class PensieveTrackSelection extends BaseTrackSelection {
         }
         return sizes;
     }
+
+
 }
