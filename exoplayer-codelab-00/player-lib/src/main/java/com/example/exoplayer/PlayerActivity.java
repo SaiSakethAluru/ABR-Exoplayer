@@ -74,8 +74,8 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean playWhenReady = true;
     private int currentWindow = 0;
     private long playbackPosition = 0;
-    private int algoIdx = 0;
-    private int videoIdx = 0;
+    private int algoIdx = 1;
+    private int videoIdx = 4;
     private OutputStreamWriter outputStreamWriter;
 //    private PlaybackStateListener playbackStateListener;
 //    private ProcessBuilder pb;
@@ -260,6 +260,11 @@ public class PlayerActivity extends AppCompatActivity {
         public void onPlaybackStateChanged(int state) {
             switch (state) {
                 case ExoPlayer.STATE_ENDED:
+                    try {
+                        outputStreamWriter.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                     infoText.setText("");
                     chooseNext();
                     break;
