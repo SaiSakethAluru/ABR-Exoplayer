@@ -658,27 +658,6 @@ public class PensieveTrackSelection extends BaseTrackSelection {
             MediaChunkIterator[] mediaChunkIterators) {
 
         // Pensieve start
-//        queue.get(queue.size()-1)
-//        long nowMs = clock.elapsedRealtime();
-//        long delay = nowMs - this.previousSelectTimeMs;
-//        this.previousSelectTimeMs = nowMs;
-//        long delay = this.listener.getChunkLoadEndTime() - this.listener.getChunkLoadStartTime();
-
-        // MediaChunkIterators start from (start index - 1) position. Set them to point to the first element.
-//        for (MediaChunkIterator mediaChunkIterator : mediaChunkIterators) {
-//            mediaChunkIterator.next();
-//        }
-//        for(int i=0;i<this.length;i++){
-//            Format f = getFormat(i);
-//            System.out.println("i: "+i+" bitrate: "+f.bitrate);
-//        }
-//        if(this.totalChunks < 0){
-//            this.totalChunks = evaluateTotalChunks(mediaChunkIterators[0]);
-//            System.out.println("mediaChunkIterator array size = "+mediaChunkIterators.length);
-//            System.out.println("total chunks = "+this.totalChunks);
-//            System.out.println("hasNext: "+ mediaChunkIterators[0].isEnded());
-//            System.out.println("next check: "+evaluateTotalChunks(mediaChunkIterators[0]));
-//        }
         if(reason == C.SELECTION_REASON_UNKNOWN){
             reason = C.SELECTION_REASON_INITIAL;
             selectedIndex = this.length - DEFAULT_BITRATE - 1;
@@ -700,17 +679,15 @@ public class PensieveTrackSelection extends BaseTrackSelection {
                 }
                 int currentSelectedIndex = this.length - selectedIndex - 1;
                 System.out.println("Current selection: " + currentSelectedIndex);
-                // TODO: Check initial selection
                 this.model_input[0][0][S_LEN - 1] = (VIDEO_BIT_RATE[currentSelectedIndex]).floatValue() / Collections.max(Arrays.asList(VIDEO_BIT_RATE)).floatValue();
                 this.model_input[0][1][S_LEN - 1] = ((float) bufferedDurationUs / 1000000) / (float) BUFFER_NORM_FACTOR;
-                // TODO: Verify this field. Also check for corner cases such as initial selection.
-                // this.model_input[0][2][S_LEN-1] -> video chunk size / delay / M_IN_K? Doubt.
-//            this.model_input[0][2][S_LEN - 1] = (float) mediaChunkIterators[currentSelectedIndex].getDataSpec().length / (float) delay / (float) M_IN_K;
                 this.model_input[0][2][S_LEN - 1] = (float) this.chunksizes.get(currentSelectedIndex)[this.chunksProcessedCount] / (float) delay / (float) M_IN_K;
 
                 this.model_input[0][3][S_LEN - 1] = ((float) delay / (float) M_IN_K) / (float) BUFFER_NORM_FACTOR;
-                // this.model_input[0][4][:A_DIM] -> next_video_chunk_sizes / M_IN_K / M_IN_K; why twice?
                 // TODO: Check for better way to get chunk sizes
+                // Currently we are loading chunk sized from prebuilt info files for the videos
+                // in consideration. For future use, better to modify it to take size directly from
+                // manifest files if possible.
                 int[] nextChunkSizes = getNextChunkSizes();
                 for (int i = 0; i < A_DIM; i++) {
                     this.model_input[0][4][i] = (float) nextChunkSizes[i] / (float) M_IN_K / (float) M_IN_K;
@@ -737,7 +714,6 @@ public class PensieveTrackSelection extends BaseTrackSelection {
                     System.out.println("selectedIndex " + selectedIndex);
                     reason = C.SELECTION_REASON_ADAPTIVE;
                 }
-                // TODO: Calculate reward
                 double rebuf = max(delay - (double) this.previousBufferedDuration / 1000.0, 0.0) / 1000.0;
                 this.outputStreamWriter.write("Rebuffering time: " + rebuf + "\n");
                 System.out.println("Rebuffering time: " + rebuf);
@@ -753,8 +729,6 @@ public class PensieveTrackSelection extends BaseTrackSelection {
                 this.totalBitrate += this.VIDEO_BIT_RATE[predictedBitrateIndex];
                 this.outputStreamWriter.write("Total Bitrate: " + this.totalBitrate + "\n");
                 String info_text = this.initialText + "\n" + "Qoe: " + totalQoe + "\n" + "Bitrate: " + this.totalBitrate;
-//            this.infoText.getText().clear();
-//            this.infoText.setText(info_text);
                 this.previousBitrate = currentSelectedIndex;
                 this.previousBufferedDuration = bufferedDurationUs;
                 TextView e = (TextView) ((Activity) this.context).findViewById(R.id.info_text);
@@ -768,46 +742,6 @@ public class PensieveTrackSelection extends BaseTrackSelection {
                 e.printStackTrace();
             }
         }
-        // Pensieve End
-
-        // Builtin adaptive mechanism.
-//        long nowMs = clock.elapsedRealtime();
-//
-//        // Make initial selection
-//        if (reason == C.SELECTION_REASON_UNKNOWN) {
-//            reason = C.SELECTION_REASON_INITIAL;
-//            selectedIndex = determineIdealSelectedIndex(nowMs);
-//            return;
-//        }
-//
-//        // Stash the current selection, then make a new one.
-//        int currentSelectedIndex = selectedIndex;
-//        selectedIndex = determineIdealSelectedIndex(nowMs);
-//        if (selectedIndex == currentSelectedIndex) {
-//            return;
-//        }
-//
-//        /* Probably not needed for Pensieve? */
-//        if (!isBlacklisted(currentSelectedIndex, nowMs)) {
-//            // Revert back to the current selection if conditions are not suitable for switching.
-//            Format currentFormat = getFormat(currentSelectedIndex);
-//            Format selectedFormat = getFormat(selectedIndex);
-//            if (selectedFormat.bitrate > currentFormat.bitrate
-//                    && bufferedDurationUs < minDurationForQualityIncreaseUs(availableDurationUs)) {
-//                // The selected track is a higher quality, but we have insufficient buffer to safely switch
-//                // up. Defer switching up for now.
-//                selectedIndex = currentSelectedIndex;
-//            } else if (selectedFormat.bitrate < currentFormat.bitrate
-//                    && bufferedDurationUs >= maxDurationForQualityDecreaseUs) {
-//                // The selected track is a lower quality, but we have sufficient buffer to defer switching
-//                // down for now.
-//                selectedIndex = currentSelectedIndex;
-//            }
-//        }
-//        // If we adapted, update the trigger.
-//        if (selectedIndex != currentSelectedIndex) {
-//            reason = C.SELECTION_REASON_ADAPTIVE;
-//        }
     }
 
     @Override
@@ -1159,7 +1093,6 @@ public class PensieveTrackSelection extends BaseTrackSelection {
             System.out.println("Check again, File not found");
             e.printStackTrace();
         } catch (IOException e) {
-            System.out.println("What is this IOexception saketh. What bad quality of code is this?");
             e.printStackTrace();
         }
         return sizes;

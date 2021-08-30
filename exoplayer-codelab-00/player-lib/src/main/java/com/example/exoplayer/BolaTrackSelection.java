@@ -62,7 +62,6 @@ public class BolaTrackSelection extends BaseTrackSelection {
     public static final long DEFAULT_MIN_TIME_BETWEEN_BUFFER_REEVALUTATION_MS = 2000;
 
 
-//    private static final Integer[] VIDEO_BIT_RATE = new Integer[]{300, 750, 1200, 1850, 2850, 4300};
     private Double[] VIDEO_BIT_RATE;
     private Double[] UTILITIES;
     private String video_name;
@@ -77,7 +76,6 @@ public class BolaTrackSelection extends BaseTrackSelection {
     private double totalBitrate = 0;
     private ArrayList<Double> qoe;
 
-//    private static final Double [] UTILITIES = new Double[]{Math.log(300),Math.log(750),Math.log(1200),Math.log(1850),Math.log(2850),Math.log(4300)};
     private static final double MINIMUM_BUFFER_S = 10.0;
     private static final double MINIMUM_BUFFER_PER_BITRATE_LEVEL_S = 2.0;
     private static final double DEFAULT_STABLE_BUFFER_TIME = 12.0;
@@ -88,7 +86,6 @@ public class BolaTrackSelection extends BaseTrackSelection {
     public static final int QOE_LINEAR = 1;
     public static final int QOE_LOG = 2;
     public static final int QOE_HD = 3;
-    //    private final Context context;
     private final BandwidthProvider bandwidthProvider;
     private final long minDurationForQualityIncreaseUs;
     private final long maxDurationForQualityDecreaseUs;
@@ -410,11 +407,8 @@ public class BolaTrackSelection extends BaseTrackSelection {
         if(this.listener.getDataType() != C.DATA_TYPE_MEDIA){
             return;
         }
-//        long nowMs = clock.elapsedRealtime();
-//        long delay = nowMs - this.previousSelectTimeMs;
         long delay = this.listener.getChunkLoadDuration();
         int currentSelectedIndex = this.length -selectedIndex - 1;
-//        this.previousSelectTimeMs = nowMs;
         double bufferTime = max(bufferedDurationUs/1000000.0,MINIMUM_BUFFER_S+MINIMUM_BUFFER_PER_BITRATE_LEVEL_S*VIDEO_BIT_RATE.length);
         double bufferLevel = bufferedDurationUs/1000000.0;
         int highestUtilityIndex = 0;

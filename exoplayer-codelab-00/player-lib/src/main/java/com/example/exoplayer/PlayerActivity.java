@@ -77,8 +77,6 @@ public class PlayerActivity extends AppCompatActivity {
     private int algoIdx = 1;
     private int videoIdx = 4;
     private OutputStreamWriter outputStreamWriter;
-//    private PlaybackStateListener playbackStateListener;
-//    private ProcessBuilder pb;
     private Listener listener;
 
     private void releasePlayer() {
@@ -86,8 +84,6 @@ public class PlayerActivity extends AppCompatActivity {
             playWhenReady = player.getPlayWhenReady();
             playbackPosition = player.getCurrentPosition();
             currentWindow = player.getCurrentWindowIndex();
-//            player.removeListener(playbackStateListener);
-//            player.removeListener((Player.EventListener) listener);
             mediaSource.removeEventListener(listener);
             player.release();
             player = null;
@@ -112,22 +108,12 @@ public class PlayerActivity extends AppCompatActivity {
                 chooseNext();
             }
         });
-//        playbackStateListener = new PlaybackStateListener();
         listener = new Listener();
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-//        System.out.println("clearing batterystats");
-//        ProcessBuilder pb = new ProcessBuilder("dumpsys","batterystats","--reset");
-//        try {
-//            pb.start();
-//            System.out.println("Cleared batterystats");
-//        } catch (IOException e) {
-//            System.out.println("Error in clearing");
-//            e.printStackTrace();
-//        }
         initializePlayer();
         Resources res = getResources();
         infoText.setText(String.format(res.getString(R.string.info_text), algorithms[algoIdx], videoNames[videoIdx]));
@@ -153,7 +139,6 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
-    //  @SuppressLint("InlinedApi")
     private void hideSystemUi() {
         playerView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LOW_PROFILE
                 | View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -165,35 +150,6 @@ public class PlayerActivity extends AppCompatActivity {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void chooseNext() {
-//        String cmd = "dumpsys batterystats > " + algorithms[algoIdx]+"_"+videoNames[videoIdx]+".txt";
-//        System.out.println("Dumping batterystats");
-////        System.out.println("Command: "+cmd);
-////        try {
-////            Process process = Runtime.getRuntime().exec(cmd);
-////            BufferedReader bufferedReader = new BufferedReader(
-////                    new InputStreamReader(process.getInputStream()));
-////            System.out.println("Dumped batterystats");
-////        } catch (IOException e) {
-////            System.out.println("Couldn't dump batterystats");
-////            e.printStackTrace();
-////        }
-//        ProcessBuilder pb = new ProcessBuilder("dumpsys","batterystats");
-//        String filename = this.getFilesDir()+"/" +"batterystats_"+algorithms[algoIdx]+"_"+videoNames[videoIdx]+".txt";
-//        System.out.println("Filename for storing batterystats: "+filename);
-//        File file = new File(filename);
-//        try {
-//            file.createNewFile();
-//        } catch (IOException e){
-//            e.printStackTrace();
-//        }
-//        pb.redirectOutput(file);
-//        try {
-//            pb.start();
-//            System.out.println("dumped batterystats");
-//        } catch (IOException e) {
-//            System.out.println("Unable to dump batterystats");
-//            e.printStackTrace();
-//        }
         releasePlayer();
         playbackPosition = 0;
         algoIdx = (algoIdx + 1) % algorithms.length;
@@ -214,7 +170,6 @@ public class PlayerActivity extends AppCompatActivity {
         }
         if (player == null) {
             DefaultTrackSelector trackSelector;
-//            player = new SimpleExoPlayer.Builder(this).build();
             switch (algorithm) {
                 case "pensieve":
                     trackSelector = new DefaultTrackSelector(this, new PensieveTrackSelection.Factory(this, videoName, infoText, outputStreamWriter, listener));
@@ -226,24 +181,18 @@ public class PlayerActivity extends AppCompatActivity {
                     trackSelector = new DefaultTrackSelector(this, new AdaptiveTrackSelection.Factory());
             }
             player = new SimpleExoPlayer.Builder(this).setTrackSelector(trackSelector).build();
-//            player.addListener((Player.EventListener) listener);
-//            player.addListener(listener);
-//            player.addListener(playbackStateListener);
         }
         playerView.setPlayer(player);
-        // In an emulated device, 10.0.2.2 refers to the localhost in the PC running the AVD.
-        // Directly giving 127.0.0.1 refers to the localhost of the emulated device itself.
-//    Uri uri = Uri.parse("http://10.0.2.2:8000/Manifest.mpd");
+//        Playing from local server -
+//        In an emulated device, 10.0.2.2 refers to the localhost in the PC running the AVD.
+//        Directly giving 127.0.0.1 refers to the localhost of the emulated device itself.
+//        String video_url = "http://10.0.2.2:8000/"+videoName+"/Manifest.mpd";
+//        Playing from github server - Can change url accordingly for other public servers
 //        String video_url = "https://saisakethaluru.github.io/" + videoName + "/Manifest.mpd";
+//        Playing from local network - IP seen from ifconfig for device
         String video_url = "http://10.42.0.1:8000/"+videoName+"/Manifest.mpd";
         Uri uri = Uri.parse(video_url);
-//        MediaItem mediaItem = new MediaItem.Builder()
-//                .setUri(uri)
-//                .setMimeType(MimeTypes.APPLICATION_MPD)
-//                .build();
-//        player.setMediaItem(mediaItem);
         DataSource.Factory dataSourceFactory = new DefaultDataSourceFactory(this, listener, new DefaultDataSourceFactory(this));
-//        DefaultHttpDataSourceFactory dataSourceFactory = new DefaultHttpDataSourceFactory();
         mediaSource = new DashMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(uri));
 
         player.setMediaSource(mediaSource);
@@ -255,7 +204,6 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private class PlaybackStateListener implements Player.EventListener {
-//        @RequiresApi(api = Build.VERSION_CODES.O)
         @Override
         public void onPlaybackStateChanged(int state) {
             switch (state) {
@@ -319,6 +267,7 @@ class Listener implements MediaSourceEventListener, TransferListener {
         this.dataType = mediaLoadData.dataType;
     }
 
+    // Not needed functions 
     @Override
     public void onTransferInitializing(DataSource source, DataSpec dataSpec, boolean isNetwork) {
 
@@ -326,21 +275,13 @@ class Listener implements MediaSourceEventListener, TransferListener {
 
     @Override
     public void onTransferStart(DataSource source, DataSpec dataSpec, boolean isNetwork) {
-//        System.out.println("Transfer start" + source.toString());
-//        System.out.println("headers"+dataSpec.httpRequestHeaders);
-//        this.chunkLoadStartTime = Clock.DEFAULT.elapsedRealtime();
-
     }
 
     @Override
     public void onBytesTransferred(DataSource source, DataSpec dataSpec, boolean isNetwork, int bytesTransferred) {
-//        System.out.println("Bytes transfer" + source.toString());
     }
 
     @Override
     public void onTransferEnd(DataSource source, DataSpec dataSpec, boolean isNetwork) {
-//        System.out.println("transfer end" + source.toString());
-//        this.chunkLoadEndTime = Clock.DEFAULT.elapsedRealtime();
-//        this.chunkLoadDuration = this.chunkLoadEndTime-this.chunkLoadStartTime;
     }
 }
